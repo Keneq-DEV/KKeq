@@ -1,0 +1,19 @@
+{
+  "name": "kkeq",
+  "version": "1.0.0",
+  "description": "Descargador multimedia modular para terminal",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "kkeq": "dist/index.js"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
