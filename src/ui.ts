@@ -1,6 +1,6 @@
 import * as readline from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
-import { BIN_DIR, getDownloadDir } from "./config.js";
+import { BIN_DIR, getConfiguredDownloadDir } from "./config.js";
 import { t } from "./i18n.js";
 
 const C = {
@@ -35,7 +35,8 @@ export class TerminalUI {
     output.write("  ╚══════════════════════════════════════════════════════════════╝\n");
     output.write(`${C.reset}`);
     output.write(`  ${C.gray}${t("engine")}: ${C.dim}${BIN_DIR}${C.reset}\n`);
-    output.write(`  ${C.gray}${t("destination")}: ${C.green}${C.bold}${getDownloadDir()}${C.reset}\n`);
+    const downloadDir = getConfiguredDownloadDir();
+    output.write(`  ${C.gray}${t("destination")}: ${C.green}${C.bold}${downloadDir ?? t("destinationNotSet")}${C.reset}\n`);
     output.write(`  ${C.gray}──────────────────────────────────────────────────────────────${C.reset}\n\n`);
   }
 

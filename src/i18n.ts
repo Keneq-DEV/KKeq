@@ -19,6 +19,12 @@ const TEXT = {
     ru: "Текущая папка",
     zh: "当前下载目录",
   },
+  destinationNotSet: {
+    es: "No está puesta",
+    en: "Not set",
+    ru: "Не задана",
+    zh: "未设置",
+  },
   inputHeading: {
     es: "[ ENLACE O COMANDO ]",
     en: "[ URL OR COMMAND ]",

@@ -27,6 +27,27 @@ export function getDownloadDir(): string {
   return path.join(process.cwd(), "downloads");
 }
 
+export function getConfiguredDownloadDir(): string | null {
+  try {
+    if (!fs.existsSync(CONFIG_FILE)) {
+      return null;
+    }
+    const data: unknown = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+    if (
+      data &&
+      typeof data === "object" &&
+      "downloadDir" in data &&
+      typeof data.downloadDir === "string" &&
+      data.downloadDir.trim().length > 0
+    ) {
+      return data.downloadDir;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export type Language = "es" | "en" | "ru" | "zh";
 
 export function getLanguage(): Language {

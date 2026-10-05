@@ -16,9 +16,90 @@ function Save-Config($Config) {
     [System.IO.File]::WriteAllText($configPath, $json, $utf8WithoutBom)
 }
 
-function Download-File([string]$Url, [string]$Destination) {
-    Write-Host "$($text.downloading) $Url"
-    Invoke-WebRequest -Uri $Url -OutFile $Destination
+function Download-File {
+    param(
+        [string]$Url,
+        [string]$Destination
+    )
+
+    $request = [System.Net.HttpWebRequest]::Create($Url)
+    $request.AllowAutoRedirect = $true
+    $request.UserAgent = "KKeq-Setup"
+    $response = $null
+    $inputStream = $null
+    $outputStream = $null
+    $buffer = New-Object byte[] (64KB)
+    $downloaded = [long]0
+
+    try {
+        $response = $request.GetResponse()
+        $totalBytes = $response.ContentLength
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [System.IO.File]::Create($Destination)
+
+        while (($read = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $outputStream.Write($buffer, 0, $read)
+            $downloaded += $read
+
+            $barWidth = 24
+            if ($totalBytes -gt 0) {
+                $percent = [Math]::Min(100, [int](100 * $downloaded / $totalBytes))
+                $filled = [int]($barWidth * $percent / 100)
+                $bar = ("#" * $filled) + ("-" * ($barWidth - $filled))
+                $size = "{0:N1} / {1:N1} MB" -f ($downloaded / 1MB), ($totalBytes / 1MB)
+                $progress = "[$bar] {0,3}%  {1}" -f $percent, $size
+            }
+            else {
+                $filled = [int](($downloaded / 1MB) % $barWidth)
+                $bar = ("#" * $filled) + (">" * [Math]::Min(1, $barWidth - $filled)) + ("-" * [Math]::Max(0, $barWidth - $filled - 1))
+                $size = "{0:N1} MB" -f ($downloaded / 1MB)
+                $progress = "[$bar] {0}" -f $size
+            }
+
+            Write-Host "`r  $progress".PadRight(70) -NoNewline
+        }
+
+        if ($totalBytes -gt 0 -and $downloaded -ne $totalBytes) {
+            throw "Downloaded $downloaded bytes, expected $totalBytes."
+        }
+
+        if ($totalBytes -gt 0) {
+            Write-Host ("`r  [########################] 100%  {0:N1} MB" -f ($downloaded / 1MB))
+        }
+        else {
+            Write-Host ""
+        }
+    }
+    catch {
+        Write-Host ""
+        if ($outputStream) {
+            $outputStream.Dispose()
+            $outputStream = $null
+        }
+        if ($inputStream) {
+            $inputStream.Dispose()
+            $inputStream = $null
+        }
+        if ($response) {
+            $response.Dispose()
+            $response = $null
+        }
+        if (Test-Path -LiteralPath $Destination) {
+            Remove-Item -LiteralPath $Destination -Force
+        }
+        throw
+    }
+    finally {
+        if ($outputStream) { $outputStream.Dispose() }
+        if ($inputStream) { $inputStream.Dispose() }
+        if ($response) { $response.Dispose() }
+    }
+}
+
+function Start-SetupProgress([string]$Status) {
+    $script:progressStep++
+    Write-Host ""
+    Write-Host "[$script:progressStep/$script:progressTotal] $Status"
 }
 
 try {
@@ -66,7 +147,11 @@ try {
             nodeSource = "Node.js"
             ytDlpSource = "yt-dlp"
             ffmpegSource = "FFmpeg"
-            downloading = "Descargando"
+            progressActivity = "Preparando KKeq"
+            progressNode = "Descargando e instalando Node.js..."
+            progressYtDlp = "Descargando yt-dlp..."
+            progressFfmpeg = "Descargando y preparando FFmpeg..."
+            progressNpm = "Instalando dependencias de KKeq..."
             node = "Descargando Node.js LTS portable..."
             nodeVersionError = "No se pudo determinar la version LTS de Node.js."
             ffmpegPackageError = "El paquete descargado de FFmpeg no contiene ffmpeg.exe y ffplay.exe."
@@ -84,7 +169,11 @@ try {
             nodeSource = "Node.js"
             ytDlpSource = "yt-dlp"
             ffmpegSource = "FFmpeg"
-            downloading = "Downloading"
+            progressActivity = "Preparing KKeq"
+            progressNode = "Downloading and installing Node.js..."
+            progressYtDlp = "Downloading yt-dlp..."
+            progressFfmpeg = "Downloading and preparing FFmpeg..."
+            progressNpm = "Installing KKeq dependencies..."
             node = "Downloading portable Node.js LTS..."
             nodeVersionError = "Could not determine the current Node.js LTS release."
             ffmpegPackageError = "The downloaded FFmpeg package does not contain ffmpeg.exe and ffplay.exe."
@@ -102,7 +191,11 @@ try {
             nodeSource = "Node.js"
             ytDlpSource = "yt-dlp"
             ffmpegSource = "FFmpeg"
-            downloading = "Загрузка"
+            progressActivity = "Подготовка KKeq"
+            progressNode = "Загрузка и установка Node.js..."
+            progressYtDlp = "Загрузка yt-dlp..."
+            progressFfmpeg = "Загрузка и подготовка FFmpeg..."
+            progressNpm = "Установка зависимостей KKeq..."
             node = "Загрузка портативной версии Node.js LTS..."
             nodeVersionError = "Не удалось определить текущую версию Node.js LTS."
             ffmpegPackageError = "В загруженном пакете FFmpeg отсутствуют ffmpeg.exe и ffplay.exe."
@@ -120,7 +213,11 @@ try {
             nodeSource = "Node.js"
             ytDlpSource = "yt-dlp"
             ffmpegSource = "FFmpeg"
-            downloading = "正在下载"
+            progressActivity = "正在准备 KKeq"
+            progressNode = "正在下载并安装 Node.js..."
+            progressYtDlp = "正在下载 yt-dlp..."
+            progressFfmpeg = "正在下载并准备 FFmpeg..."
+            progressNpm = "正在安装 KKeq 依赖..."
             node = "正在下载便携版 Node.js LTS..."
             nodeVersionError = "无法确定当前的 Node.js LTS 版本。"
             ffmpegPackageError = "下载的 FFmpeg 压缩包中缺少 ffmpeg.exe 和 ffplay.exe。"
@@ -136,14 +233,16 @@ try {
     $systemNode = Get-Command node -ErrorAction SilentlyContinue
     $systemNpm = Get-Command npm -ErrorAction SilentlyContinue
     $needLocalNode = (-not $systemNode -or -not $systemNpm) -and (-not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd))
+    $missingFfmpeg = @("ffmpeg.exe", "ffplay.exe", "ffprobe.exe") | Where-Object {
+        -not (Test-Path (Join-Path $lib $_))
+    }
 
     $missing = [System.Collections.Generic.List[string]]::new()
     if (-not (Test-Path (Join-Path $lib "yt-dlp.exe"))) { $missing.Add("yt-dlp") }
-    foreach ($name in @("ffmpeg.exe", "ffplay.exe", "ffprobe.exe")) {
-        if (-not (Test-Path (Join-Path $lib $name))) { $missing.Add($name) }
-    }
+    foreach ($name in $missingFfmpeg) { $missing.Add($name) }
     if ($needLocalNode) { $missing.Add("Node.js LTS and npm") }
-    if (-not (Test-Path (Join-Path $root "node_modules\tsx\dist\cli.mjs"))) { $missing.Add("KKeq npm dependencies") }
+    $needNpmDependencies = -not (Test-Path (Join-Path $root "node_modules\tsx\dist\cli.mjs"))
+    if ($needNpmDependencies) { $missing.Add("KKeq npm dependencies") }
 
     if ($missing.Count -gt 0) {
         Write-Host ""
@@ -161,7 +260,17 @@ try {
         }
     }
 
+    $missingYtDlp = -not (Test-Path (Join-Path $lib "yt-dlp.exe"))
+    $totalSteps = 0
+    if ($needLocalNode) { $totalSteps++ }
+    if ($missingYtDlp) { $totalSteps++ }
+    if ($missingFfmpeg.Count -gt 0) { $totalSteps++ }
+    if ($needNpmDependencies) { $totalSteps++ }
+    $script:progressTotal = [Math]::Max(1, $totalSteps)
+    $script:progressStep = 0
+
     if ($needLocalNode) {
+        Start-SetupProgress $text.progressNode
         Write-Host $text.node
         $releases = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json"
         $release = $releases | Where-Object { $_.lts } | Select-Object -First 1
@@ -183,13 +292,12 @@ try {
 
     $ytDlp = Join-Path $lib "yt-dlp.exe"
     if (-not (Test-Path $ytDlp)) {
+        Start-SetupProgress $text.progressYtDlp
         Download-File "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" $ytDlp
     }
 
-    $missingFfmpeg = @("ffmpeg.exe", "ffplay.exe", "ffprobe.exe") | Where-Object {
-        -not (Test-Path (Join-Path $lib $_))
-    }
     if ($missingFfmpeg.Count -gt 0) {
+        Start-SetupProgress $text.progressFfmpeg
         $ffmpegZip = Join-Path $temp "ffmpeg-release-essentials.zip"
         $ffmpegExtract = Join-Path $temp "ffmpeg"
         Download-File "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $ffmpegZip
@@ -208,7 +316,8 @@ try {
         }
     }
 
-    if (-not (Test-Path (Join-Path $root "node_modules\tsx\dist\cli.mjs"))) {
+    if ($needNpmDependencies) {
+        Start-SetupProgress $text.progressNpm
         Write-Host $text.npm
         $npm = Get-Command npm -ErrorAction SilentlyContinue
         if ($npm) {
